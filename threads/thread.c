@@ -27,6 +27,9 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+static struct list sleep_list;
+
+// static int64_t next_tick_to_awake = INT64_MAX;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -108,6 +111,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -115,6 +119,54 @@ thread_init (void) {
 	init_thread (initial_thread, "main", PRI_DEFAULT);
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
+}
+
+/* thread 재우기 */
+void thread_sleep(int64_t ticks) {
+	ASSERT (!intr_context ());
+	
+	struct thread *curr = thread_current ();
+	enum intr_level old_level;
+	
+	old_level = intr_disable ();
+	
+	if (curr != idle_thread) {
+		curr->wakeup_tick = ticks + timer_ticks();
+		list_insert_ordered(&sleep_list, &curr->elem, compare, NULL);
+	}
+
+	thread_block();
+	intr_set_level (old_level);
+}
+
+
+/* thread 대소 비교 */
+bool compare(const struct list_elem *a, const struct list_elem *b, void *aux) {
+	ASSERT(a != NULL);
+	ASSERT(b != NULL);	
+	struct thread *first = list_entry(a, struct thread, elem);
+	struct thread *second = list_entry(b, struct thread, elem);
+	return first->wakeup_tick < second->wakeup_tick;
+}
+
+/* thread 깨우기 */
+void thread_awake(int64_t tickts) {
+	ASSERT (intr_get_level () == INTR_OFF);
+
+	struct list_elem *start = list_begin(&sleep_list);
+	struct list_elem *end = list_end(&sleep_list);
+	struct list_elem *remove_elem;
+	struct thread *find_elem;
+	while (start != end) {
+		find_elem = list_entry(start, struct thread, elem); 
+		if (find_elem->wakeup_tick <= tickts) {
+			remove_elem = list_remove(start);
+			thread_unblock(find_elem);
+			start = remove_elem;
+		} else {
+			break;
+		}
+	}
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
