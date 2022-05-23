@@ -121,6 +121,7 @@ thread_init (void) {
 	initial_thread->tid = allocate_tid ();
 }
 
+/* Project 1 start */
 /* thread 재우기 */
 void thread_sleep(int64_t ticks) {
 	ASSERT (!intr_context ());
@@ -132,7 +133,7 @@ void thread_sleep(int64_t ticks) {
 	
 	if (curr != idle_thread) {
 		curr->wakeup_tick = ticks + timer_ticks();
-		list_insert_ordered(&sleep_list, &curr->elem, compare, NULL);
+		list_insert_ordered(&sleep_list, &curr->elem, alarm_compare, NULL);
 	}
 
 	thread_block();
@@ -141,7 +142,7 @@ void thread_sleep(int64_t ticks) {
 
 
 /* thread 대소 비교 */
-bool compare(const struct list_elem *a, const struct list_elem *b, void *aux) {
+bool alarm_compare(const struct list_elem *a, const struct list_elem *b, void *aux) {
 	ASSERT(a != NULL);
 	ASSERT(b != NULL);	
 	struct thread *first = list_entry(a, struct thread, elem);
@@ -168,6 +169,26 @@ void thread_awake(int64_t tickts) {
 		}
 	}
 }
+/* Project 1 end */
+
+/* Project 2 start */
+/* 우선 순위 비교 */
+bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux) {
+	ASSERT(a != NULL);
+	ASSERT(b != NULL);	
+	struct thread *first = list_entry(a, struct thread, elem);
+	struct thread *second = list_entry(b, struct thread, elem);
+	return first->priority > second->priority;
+}
+
+void test_max_priority(void) {
+	struct thread *curr = thread_current ();
+	if (!list_empty(&ready_list) && curr->priority 
+			< list_entry(list_front(&ready_list), struct thread, elem)->priority) {
+		thread_yield();
+	}
+}
+/* Project 2 end */
 
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
@@ -258,6 +279,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	test_max_priority();
 
 	return tid;
 }
@@ -292,7 +314,7 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered (&ready_list, &t->elem, priority_compare, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -355,7 +377,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered (&ready_list, &curr->elem, priority_compare , NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -364,6 +386,7 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	test_max_priority();
 }
 
 /* Returns the current thread's priority. */
