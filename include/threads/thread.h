@@ -91,11 +91,15 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-
+	
+	int init_priority;
+	struct lock *wait_on_lock;
+	struct list donations;
+	struct list_elem donation_elem;
+	
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 	int64_t wakeup_tick;				/* 깨어나야 할 tick */
-
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
@@ -144,13 +148,19 @@ int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
 
-/* project 1 */
+/* alarm */
 void thread_sleep(int64_t);
 void thread_awake(int64_t);
 bool alarm_compare(const struct list_elem *, const struct list_elem *, void *);
 
-/* project 2 */
+/* priority */
 bool priority_compare(const struct list_elem *, const struct list_elem *, void *);
 void test_max_priority(void);
+
+/* donation */
+void donate_priority(void);
+void remove_with_lock(struct lock *lock);
+void refresh_priority(void);
+bool donation_compare(const struct list_elem *, const struct list_elem *, void *);
 
 #endif /* threads/thread.h */

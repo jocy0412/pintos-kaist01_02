@@ -386,6 +386,8 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	refresh_priority();
+	donate_priority();
 	test_max_priority();
 }
 
@@ -484,6 +486,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	t->init_priority = priority;
+	t->wait_on_lock = NULL;
+	list_init(&t->donations);
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -662,4 +668,55 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+void donate_priority() {
+	struct thread *curr = thread_current();
+	struct lock *lock_sema = curr->wait_on_lock;
+	struct list_elem *start = list_begin(&lock_sema->semaphore.waiters);
+	struct list_elem *end = list_end(&lock_sema->semaphore.waiters);
+	struct thread *lock_holder = lock_sema->holder;
+
+	while (start != end) {
+		if (lock_holder == start) {
+			lock_holder->priority = curr->priority;
+			list_push_back(&lock_holder->donations, start);
+		}
+		start = list_next(start);
+	}
+}
+
+void remove_with_lock(struct lock *lock) {
+	struct thread *curr = thread_current();
+	struct lock *lock_sema = curr->wait_on_lock;
+	struct list_elem *start = list_begin(&lock_sema->semaphore.waiters);
+	struct list_elem *end = list_end(&lock_sema->semaphore.waiters);
+	struct thread *thread_start;
+	
+	while (start != end) {
+		thread_start = list_entry(start, struct thread, elem);
+		if (thread_start->wait_on_lock == lock) {
+			list_remove(start);
+		}
+		start = list_next(start);
+	}
+}
+
+void refresh_priority() {
+	struct thread *curr = thread_current();
+	curr->priority = curr->init_priority;
+	struct list curr_donations = curr->donations;
+	struct list_elem *donation_max = list_max(&curr_donations, donation_compare, NULL);
+	struct thread *donation_max_thread = list_entry(donation_max, struct thread, elem);
+	if(curr->priority < donation_max_thread->priority) {
+		curr->priority = donation_max_thread->priority;
+	}
+}
+
+bool donation_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	ASSERT(a != NULL);
+	ASSERT(b != NULL);	
+	struct thread *first = list_entry(a, struct thread, elem);
+	struct thread *second = list_entry(b, struct thread, elem);
+	return first->priority < second->priority;
 }
