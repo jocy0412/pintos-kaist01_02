@@ -142,7 +142,7 @@ void thread_sleep(int64_t ticks) {
 
 
 /* thread 대소 비교 */
-bool alarm_compare(const struct list_elem *a, const struct list_elem *b, void *aux) {
+bool alarm_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	ASSERT(a != NULL);
 	ASSERT(b != NULL);	
 	struct thread *first = list_entry(a, struct thread, elem);
@@ -173,7 +173,7 @@ void thread_awake(int64_t tickts) {
 
 /* Project 2 start */
 /* 우선 순위 비교 */
-bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux) {
+bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	ASSERT(a != NULL);
 	ASSERT(b != NULL);	
 	struct thread *first = list_entry(a, struct thread, elem);
