@@ -105,6 +105,7 @@ struct thread {
 	struct lock *wait_on_lock;
 	struct list donations;
 	struct list_elem donation_elem;
+	struct list_elem all_elem;
 	
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
