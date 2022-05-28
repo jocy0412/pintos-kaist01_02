@@ -119,7 +119,7 @@ main (void) {
 	printf ("Boot complete.\n");
 
 	/* Run actions specified on kernel command line. */
-	run_actions (argv);
+	run_actions (argv); // 커널 명령줄에 지정된 작업 실행
 
 	/* Finish up. */
 	if (power_off_when_done)

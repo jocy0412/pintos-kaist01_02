@@ -39,7 +39,7 @@ process_init (void) {
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
-process_create_initd (const char *file_name) {
+process_create_initd (const char *file_name) { // 한양대 pdf의 process_execute 함수
 	char *fn_copy;
 	tid_t tid;
 
@@ -59,14 +59,14 @@ process_create_initd (const char *file_name) {
 
 /* A thread function that launches first user process. */
 static void
-initd (void *f_name) {
+initd (void *f_name) { // 프로세스를 생성할때 thread_create가 실행할 함수
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
 
 	process_init ();
 
-	if (process_exec (f_name) < 0)
+	if (process_exec (f_name) < 0) // intid를 실행하면 프로세스 시작하는 함수 실행하고 조건문 확인
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
@@ -161,34 +161,83 @@ error:
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
-process_exec (void *f_name) {
-	char *file_name = f_name;
+process_exec (void *f_name) { // 한양대 pdf의 start_process 함수
+	char *file_name = f_name; // f_name를 (void *)로 넘겨받았고, 해당 부분을 문자열로 인식하기 위해서 char * 로 변환함
 	bool success;
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
-	struct intr_frame _if;
+
+    /* ----------- Project2 ----------- */
+    char *fn_copy[128]; // 스택에 저장, 다른 함수에서 원본 문자열을 사용할 수 있기 때문에 복사본을 이용하여 파싱함
+	memcpy(fn_copy, file_name, strlen(file_name) + 1); // 문자열에는 \n이 들어가는데 strlen에서는 \n 앞까지만 읽고 끝냄, 그래서 전체를 들고오기 위해 + 1
+    /* ----------- Project2 ----------- */
+
+    // 아래 intr_frame 기존에 스택에 있던 다른 쓰레기 값들이 들어 있을 수 있어서 초기화
+	struct intr_frame _if; // intr_frame 내 구조체 멤버에 필요한 정보
 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
 	_if.cs = SEL_UCSEG;
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
 	/* We first kill the current context */
-	process_cleanup ();
+	process_cleanup (); // 현재 프로세스에 할당된 page directory를 지워준다.
 
+    /* ----------- Project2 ----------- */
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (fn_copy, &_if); // file_name의 _if를 현재 프로세스에 load
+    /* ----------- Project2 ----------- */
 
 	/* If load failed, quit. */
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
 
+    /* ----------- Project2 ----------- */
+    hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	/* ----------- Project2 ----------- */
+
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
 }
 
+/* ----------- Project2 ----------- */
+void argument_stack(char **arg_list, int cnt, struct intr_frame *if_) {
+	char *arg_address[128];
+
+    /* 맨 끝을 알려주기 위한 arg[]의 마지막 요소인 NULL 값을 제외하고 스택에 저장 */
+	for (int i = cnt-1; i >= 0; i--) {
+		int argv_len = strlen(arg_list[i]);
+        // if_->rsp 는 현재 user_stack에서 현재 위치를 가리키는 stack pointer
+		if_->rsp = if_->rsp - (argv_len + 1); // 문자열크기 + sentinel(1) 값까지 포함하여 공간만큼 rsp를 내려주고
+		memcpy(if_->rsp, arg_list[i], argv_len + 1); // 인자로 받은 arg_list의 값을 하나씩 스택에 추가
+		arg_address[i] = if_->rsp; // arg_address 배열에 저장한 값들의 문자열 시작 주소를 저장
+	}
+
+	// 성능을 위해 스택포인터가 8의 배수 될때까지 rsp를 1씩 내려서 나머지 영역을 padding
+	while (if_->rsp % 8 != 0) {
+		if_->rsp--;
+		*(uint8_t *)if_->rsp = 0;
+	}
+
+	// arg_address[] 배열을 따로 만들어 주소값을 저장했던 것을 활용해서 주소값 자체를 삽입
+	for (int i = cnt; i >= 0; i--) {
+		if_->rsp = if_->rsp - 8;
+		if (i == cnt) { // arg_address에 담긴 주소의 마지막을 표시하고, 다른 프로세스가 해당 메모리를 전에 사용했을 수도 있기 때문에 0으로 초기화
+			memset(if_->rsp, 0, sizeof(char **));
+		} else { // stack에 arg_address의 값을 저장
+			memcpy(if_->rsp, &arg_address[i], sizeof(char **));
+		}
+	}
+
+	if_->rsp = if_->rsp - 8; // rsp를 fake address까지 이동시키고
+	memset(if_->rsp, 0, sizeof(void *)); // return address에 0으로 초기화
+
+	if_->R.rdi = cnt;
+	if_->R.rsi = if_->rsp + 8; // arg_address의 맨처음 가리키는 주소값, fake address의 바로 위
+}
+/* ----------- Project2 ----------- */
 
 /* Waits for thread TID to die and returns its exit status.  If
  * it was terminated by the kernel (i.e. killed due to an
@@ -204,6 +253,9 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	 /* ----------- Project2 ----------- */
+	while (1){} // 자식 프로세스가 종료될 때까지 무한 대기
+    /* ----------- Project2 ----------- */
 	return -1;
 }
 
@@ -328,6 +380,17 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+    /* ----------- Project2 ----------- */
+    char *save_file, *token;
+	char *arg_list[128];
+	int cnt = 0;
+
+	token = strtok_r(file_name, " ", &save_file); // 첫번째 이름
+	while(token != NULL) {
+		arg_list[cnt++] = token; // arg_list 배열에 인자들 추가
+		token = strtok_r(NULL, " ", &save_file);
+	}
+    /* ----------- Project2 ----------- */
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -416,6 +479,9 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+    /* ----------- Project2 ----------- */
+    argument_stack(arg_list, cnt, if_);
+    /* ----------- Project2 ----------- */
 
 	success = true;
 
