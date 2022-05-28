@@ -7,6 +7,9 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
+#include "threads/init.h"
+#include "filesys/filesys.h"
+#include "threads/vaddr.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -40,7 +43,85 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	// TODO: Your implementation goes here.
+	
+	int sys_number = f->R.rax; 
+	check_address(sys_number);
+
+	switch(sys_number) {
+		// case SYS_HALT:
+		// 	halt();
+		// case SYS_EXIT:
+		// 	exit();
+		// case SYS_FORK:
+		// 	fork();		
+		// case SYS_EXEC:
+		// 	exec();
+		// case SYS_WAIT:
+		// 	wait();
+		// case SYS_CREATE:
+		// 	create();		
+		// case SYS_REMOVE:
+		// 	remove();		
+		// case SYS_OPEN:
+		// 	open();		
+		// case SYS_FILESIZE:
+		// 	filesize();
+		// case SYS_READ:
+		// 	read();
+		// case SYS_WRITE:
+		// 	write();		
+		// case SYS_SEEK:
+		// 	seek();		
+		// case SYS_TELL:
+		// 	tell();		
+		// case SYS_CLOSE:
+		// 	close();	
+	}
 	printf ("system call!\n");
 	thread_exit ();
 }
+/* 포인터가 가리키는 주소가 유저영역의 주소인지 확인 잘못된 접근일 경우 프로세스 종료 */
+void check_address(void *addr) {
+	if (!is_user_vaddr(addr) || addr == NULL) {
+		exit(-1);
+	}
+}      
+/* 유저 스택에 저장된 인자값들을 커널로 저장, 인자가 저장된 위치가 유저영역인지 확인 */   
+void get_argument(void *rsp, int *arg, int cnt) {
+	int *rsp_ = rsp; 
+	for (int i = 0; i < cnt; i++) {
+		check_address(&rsp_[i]);
+		check_address(&arg[i]);
+		arg[i] = rsp_[i];
+	}
+}  
+/* pintos를 종료시키는 시스템 콜 */
+void halt(void) {
+	power_off();
+}
+
+/* 현재 프로세스를 종료시키는 시스템 콜 */                       
+void exit(int status) {
+	struct thread *curr = thread_current();
+	printf("%s: exit(%d)", curr->name, status);
+	thread_exit();
+}
+
+/* 파일을 생성하는 시스템 콜 */                        
+bool create(const char *file, unsigned initial_size) {
+	if (filesys_create(file, initial_size)) {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+/* 파일을 삭제하는 시스템 콜 */    
+bool remove(const char *file) {
+	if (filesys_remove(file)) {
+		return true;
+	} else {
+		return false;
+	}
+}          

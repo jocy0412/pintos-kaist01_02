@@ -6,7 +6,7 @@ all: os.dsk
 
 disk:
 	pintos-mkdisk filesys.dsk 10
-	pintos --fs-disk filesys.dsk -p tests/userprog/args-single:args-single -- -q -f run 'args-single onearg'
+	pintos --fs-disk filesys.dsk -p tests/userprog/args-multiple:args-multiple -- -q -f run 'args-multiple some arguments for you!'
 include ../../Make.config
 include ../Make.vars
 include ../../tests/Make.tests
