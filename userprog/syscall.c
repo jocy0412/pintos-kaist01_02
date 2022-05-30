@@ -10,6 +10,9 @@
 #include "threads/init.h"
 #include "filesys/filesys.h"
 #include "threads/vaddr.h"
+#include "userprog/process.h"
+#include "threads/synch.h"
+#include "threads/thread.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -43,25 +46,29 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	
+	check_address(f);
 	int sys_number = f->R.rax; 
-	check_address(sys_number);
 
 	switch(sys_number) {
-		// case SYS_HALT:
-		// 	halt();
-		// case SYS_EXIT:
-		// 	exit();
+		case SYS_HALT:
+			halt();
+			break;
+		case SYS_EXIT:
+			exit(f->R.rdi);
+			break;
 		// case SYS_FORK:
 		// 	fork();		
-		// case SYS_EXEC:
-		// 	exec();
-		// case SYS_WAIT:
-		// 	wait();
-		// case SYS_CREATE:
-		// 	create();		
-		// case SYS_REMOVE:
-		// 	remove();		
+		case SYS_EXEC:
+			exec(f->R.rdi);
+			break;
+		case SYS_WAIT:
+			wait(f->R.rdi);
+		case SYS_CREATE:
+			create(f->R.rdi, f->R.rsi);
+			break;		
+		case SYS_REMOVE:
+			remove(f->R.rdi);
+			break;		
 		// case SYS_OPEN:
 		// 	open();		
 		// case SYS_FILESIZE:
@@ -103,6 +110,7 @@ void halt(void) {
 /* 현재 프로세스를 종료시키는 시스템 콜 */                       
 void exit(int status) {
 	struct thread *curr = thread_current();
+	curr->exit_status = 1;
 	printf("%s: exit(%d)", curr->name, status);
 	thread_exit();
 }
@@ -124,4 +132,17 @@ bool remove(const char *file) {
 	} else {
 		return false;
 	}
-}          
+}
+
+/* 자식 프로세스를 생성하고 프로그램을 실행시키는 시스템 콜 */
+tid_t exec(const char *cmd_line) {
+	tid_t pid = process_create_initd(cmd_line);
+	struct thread *curr = thread_current ();
+	sema_down(&curr->sema_load);
+	struct thread *child = get_child_process(pid);
+	return child->is_loaded == -1 ? -1 : pid;
+}
+
+int wait(tid_t tid) {
+	process_wait(tid);
+}

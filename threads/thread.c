@@ -12,6 +12,7 @@
 #include "threads/vaddr.h"
 #include "intrinsic.h"
 #include "threads/fixed_point.h"
+#include "userprog/process.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -282,6 +283,15 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	/* project 2 */
+	struct thread *curr = thread_current();
+	t->parents = curr;
+	t->is_loaded = 0;
+	t->is_exited = 0;
+	sema_init(&t->sema_exit, 0);
+	sema_init(&t->sema_load, 0);
+	list_push_back(&curr->child_list, &t->child_elem);
+
 	/* Add to run queue. */
 	thread_unblock (t);
 	test_max_priority();
@@ -361,6 +371,9 @@ thread_exit (void) {
 	ASSERT (!intr_context ());
 
 #ifdef USERPROG
+	struct thread *curr = thread_current();
+	remove_child_process(curr);
+	sema_up(&curr->sema_exit)
 	process_exit ();
 #endif
 
@@ -512,7 +525,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
-	
+
+	/* project 2 */
+	list_init(&t->child_list);
+
 	if (!thread_mlfqs) {
 		t->init_priority = priority;
 		t->wait_on_lock = NULL;

@@ -118,6 +118,18 @@ struct thread {
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 #endif
+	/* project 2 */
+	struct thread *parents;
+	struct list_elem child_elem;
+	struct list child_list;
+
+	int is_loaded;
+	int is_exited;
+
+	struct semaphore sema_exit;
+	struct semaphore sema_load;
+
+	int exit_status;
 
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */

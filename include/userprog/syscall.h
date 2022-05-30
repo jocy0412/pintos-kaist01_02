@@ -12,6 +12,7 @@ void halt(void);                        /* pintos를 종료시키는 시스템 �
 void exit(int);                         /* 현재 프로세스를 종료시키는 시스템 콜 */
 bool create(const char *, unsigned);    /* 파일을 생성하는 시스템 콜 */
 bool remove(const char *);              /* 파일을 삭제하는 시스템 콜 */
-
+tid_t exec(const char *);
+int wait(tid_t);
 
 #endif /* userprog/syscall.h */

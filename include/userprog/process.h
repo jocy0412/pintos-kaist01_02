@@ -12,5 +12,8 @@ void process_activate (struct thread *next);
 
 /* 인수 전달 */
 void argument_stack(char **, int, struct intr_frame *);
+struct thread *get_child_process(int);
+void remove_child_process(struct thread *);
+
 
 #endif /* userprog/process.h */

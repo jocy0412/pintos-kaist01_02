@@ -17,6 +17,7 @@
 #include "threads/thread.h"
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 #include "intrinsic.h"
 #ifdef VM
 #include "vm/vm.h"
@@ -180,19 +181,44 @@ process_exec (void *f_name) {
 
 	/* And then load the binary */
 	success = load (fn_copy, &_if);
-
+	struct thread *curr = thread_current();
+	sema_up(&curr->sema_load);
 	/* If load failed, quit. */
 	// palloc_free_page (file_name);
-	if (!success)
-		return -1;
+	struct list_elem *curr_child = list_rbegin(&curr->child_list);
+	struct thread *child = list_entry(curr_child, struct thread, child_elem);
 
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	if (!success) {
+		child->is_loaded = -1;
+		thread_exit();
+		return -1;
+	}
+
+	child->is_loaded = 1;
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
 }
 
+/* project 2 */
+struct thread *get_child_process(int pid) {
+	struct thread * curr = thread_current();
+	struct list_elem *start = list_begin(&curr->child_list);
+	struct list_elem *end = list_end(&curr->child_list);
+	
+	while (start != end) {
+		struct thread *tmp = list_entry(start, struct thread, child_elem);
+		if (pid == tmp->tid) return tmp;
+	}
+	return NULL;
+}
+
+void remove_child_process(struct thread *cp) {
+	list_remove(&cp->child_elem);
+	palloc_free_page(cp);
+}
 
 void argument_stack(char **arg_list, int cnt, struct intr_frame *if_) {
 	char *arg_address[128];
@@ -238,8 +264,25 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while (1){}
-	return -1;
+	struct thread * curr = thread_current();
+	struct list_elem *start = list_begin(&curr->child_list);
+	struct list_elem *end = list_end(&curr->child_list);
+	struct thread *child = NULL;
+	struct thread *tmp;
+
+	while (start != end) {
+		tmp = list_entry(start, struct thread, child_elem);
+		if (child_tid == tmp->tid) {
+			child = tmp;
+			break;
+		}
+	}
+
+	if (child == NULL) return -1;
+
+	sema_down(&child->sema_exit);
+	palloc_free_page(child);
+	return child->exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -250,7 +293,6 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-
 	process_cleanup ();
 }
 
