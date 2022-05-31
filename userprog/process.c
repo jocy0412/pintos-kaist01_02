@@ -59,14 +59,14 @@ process_create_initd (const char *file_name) { // 한양대 pdf의 process_execu
 
 /* A thread function that launches first user process. */
 static void
-initd (void *f_name) { // 프로세스를 생성할때 thread_create가 실행할 함수
+initd (void *f_name) { // 첫번째 유저 프로세스를 실행하는 함수, 그 다음부터는 fork()를 통해 프로세스를 생성
 #ifdef VM
 	supplemental_page_table_init (&thread_current ()->spt);
 #endif
 
 	process_init ();
 
-	if (process_exec (f_name) < 0) // intid를 실행하면 프로세스 시작하는 함수 실행하고 조건문 확인
+	if (process_exec (f_name) < 0) // initd를 실행하면 프로세스 시작하는 함수 실행하고 조건문 확인
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
@@ -176,8 +176,8 @@ process_exec (void *f_name) { // 한양대 pdf의 start_process 함수
 
     // 아래 intr_frame 기존에 스택에 있던 다른 쓰레기 값들이 들어 있을 수 있어서 초기화
 	struct intr_frame _if; // intr_frame 내 구조체 멤버에 필요한 정보
-	_if.ds = _if.es = _if.ss = SEL_UDSEG;
-	_if.cs = SEL_UCSEG;
+	_if.ds = _if.es = _if.ss = SEL_UDSEG; // User Data 세그먼트
+	_if.cs = SEL_UCSEG; // User Code 세그먼트
 	_if.eflags = FLAG_IF | FLAG_MBS;
 
 	/* We first kill the current context */
