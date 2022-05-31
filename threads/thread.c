@@ -112,7 +112,7 @@ thread_init (void) {
 	};
 	lgdt (&gdt_ds);
 
-	/* Init the globla thread context */
+	/* Init the global thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&sleep_list);
@@ -130,12 +130,12 @@ thread_init (void) {
 /* thread 재우기 */
 void thread_sleep(int64_t ticks) {
 	ASSERT (!intr_context ());
-	
+
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
-	
+
 	old_level = intr_disable ();
-	
+
 	if (curr != idle_thread) {
 		curr->wakeup_tick = ticks + timer_ticks();
 		list_insert_ordered(&sleep_list, &curr->elem, alarm_compare, NULL);
@@ -149,7 +149,7 @@ void thread_sleep(int64_t ticks) {
 /* thread 대소 비교 */
 bool alarm_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	ASSERT(a != NULL);
-	ASSERT(b != NULL);	
+	ASSERT(b != NULL);
 	struct thread *first = list_entry(a, struct thread, elem);
 	struct thread *second = list_entry(b, struct thread, elem);
 	return first->wakeup_tick < second->wakeup_tick;
@@ -164,7 +164,7 @@ void thread_awake(int64_t tickts) {
 	struct list_elem *remove_elem;
 	struct thread *find_elem;
 	while (start != end) {
-		find_elem = list_entry(start, struct thread, elem); 
+		find_elem = list_entry(start, struct thread, elem);
 		if (find_elem->wakeup_tick <= tickts) {
 			remove_elem = list_remove(start);
 			thread_unblock(find_elem);
@@ -180,7 +180,7 @@ void thread_awake(int64_t tickts) {
 /* 우선 순위 비교 */
 bool priority_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	ASSERT(a != NULL);
-	ASSERT(b != NULL);	
+	ASSERT(b != NULL);
 	struct thread *first = list_entry(a, struct thread, elem);
 	struct thread *second = list_entry(b, struct thread, elem);
 	return first->priority > second->priority;
@@ -188,7 +188,7 @@ bool priority_compare(const struct list_elem *a, const struct list_elem *b, void
 
 void test_max_priority(void) {
 	struct thread *curr = thread_current ();
-	if (!list_empty(&ready_list) && curr->priority 
+	if (!list_empty(&ready_list) && curr->priority
 			< list_entry(list_front(&ready_list), struct thread, elem)->priority) {
 		thread_yield();
 	}
@@ -512,7 +512,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
-	
+
 	if (!thread_mlfqs) {
 		t->init_priority = priority;
 		t->wait_on_lock = NULL;
@@ -521,6 +521,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	if(idle_thread != t) {
 		list_push_back(&all_list, &t->all_elem);
 	}
+
+	/* project 2: system call */
+	list_init(&t->child_list);
+	t->exit_status = 0;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -721,7 +725,7 @@ void remove_with_lock(struct lock *lock) {
 	struct thread *curr = thread_current();
 	struct list_elem *start = list_begin(&curr->donations);
 	struct list_elem *end = list_end(&curr->donations);
-	
+
 	while (start != end) {
 		struct thread *thread_start = list_entry(start, struct thread, donation_elem);
 		if (thread_start->wait_on_lock == lock) {
@@ -747,7 +751,7 @@ void refresh_priority() {
 
 bool donation_compare(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 	ASSERT(a != NULL);
-	ASSERT(b != NULL);	
+	ASSERT(b != NULL);
 	struct thread *first = list_entry(a, struct thread, donation_elem);
 	struct thread *second = list_entry(b, struct thread, donation_elem);
 	return first->priority < second->priority;
@@ -789,11 +793,11 @@ void mlfqs_increment (void) {
 void mlfqs_recalc (void) {
 	struct list_elem *start = list_begin(&all_list);
 	struct list_elem *end = list_end(&all_list);
-	
+
 	while (start != end) {
 		struct thread *thread_node = list_entry(start, struct thread, all_elem);
 		mlfqs_recent_cpu(thread_node);
 		mlfqs_priority(thread_node);
 		start = list_next(start);
 	}
-} 
+}

@@ -34,6 +34,10 @@ typedef int tid_t;
 #define RECENT_CPU_DEFAULT 0
 #define LOAD_AVG_DEFAULT 0
 
+/* --- project 2: system call --- */
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES *(1<<9) // limit fdidx
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -97,7 +101,7 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-	
+
 	int nice;
 	int recent_cpu;
 
@@ -106,7 +110,7 @@ struct thread {
 	struct list donations;
 	struct list_elem donation_elem;
 	struct list_elem all_elem;
-	
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 	int64_t wakeup_tick;				/* 깨어나야 할 tick */
@@ -122,6 +126,15 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+	/* --- Project2: User programs - system call --- */
+	/* 자식 프로세스 순회용 리스트 */
+	struct list_elem child_elem;
+	struct list child_list;
+	int exit_status; // _exit(), _wait() 구현 때 사용
+	struct intr_frame parent_if; // _fork() 구현 때 사용, __do_fork() 함수
+	struct list file_descriptor_table; // FDT
+	struct file *executing_file;
+    /* --- Project2: User programs - system call --- */
 };
 
 /* If false (default), use round-robin scheduler.

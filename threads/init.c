@@ -177,7 +177,7 @@ read_command_line (void) {
 	int i;
 
 	argc = *(uint32_t *) ptov (LOADER_ARG_CNT);
-	p = ptov (LOADER_ARGS);
+	p = ptov (LOADER_ARGS); // ptov 매크로는 물리주소를 가상주소로 변환하는 역할
 	end = p + LOADER_ARGS_LEN;
 	for (i = 0; i < argc; i++) {
 		if (p >= end)
