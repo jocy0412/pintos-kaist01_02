@@ -76,9 +76,26 @@ initd (void *f_name) {
  * TID_ERROR if the thread cannot be created. */
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	struct thread *curr = thread_current();
+
+	memcpy(&curr->parent_if, if_, sizeof(struct intr_frame));
+
+	printf("sema_create start\n");
+	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, curr);
+	printf("sema_create end\n");
+
+	if (tid == TID_ERROR)
+		return TID_ERROR;
+
+	struct thread *child = get_child_process(tid);
+	printf("sema_down start\n");
+	sema_down(&child->fork_sema);
+	printf("sema_down end\n");
+
+	if (child->exit_status == -1)
+		return TID_ERROR;
+
+	return tid;
 }
 
 #ifndef VM
@@ -155,18 +172,23 @@ __do_fork (void *aux) {
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
+	printf("sema_up start\n");
+	sema_up(&current->fork_sema);
+	printf("sema_up end\n");
 error:
 	thread_exit ();
+	printf("sema_up start\n");
+	sema_up(&current->fork_sema);
+	printf("sema_up end\n");
+	exit(TID_ERROR);
 }
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
-	char *file_name = f_name;
+	printf("exec start");
 	bool success;
-	char *fn_copy[128];
-	memcpy(fn_copy, file_name, strlen(file_name)+1);
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -180,22 +202,16 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (fn_copy, &_if);
-	struct thread *curr = thread_current();
-	sema_up(&curr->sema_load);
+	success = load (f_name, &_if);
+
 	/* If load failed, quit. */
 	// palloc_free_page (file_name);
-	struct list_elem *curr_child = list_rbegin(&curr->child_list);
-	struct thread *child = list_entry(curr_child, struct thread, child_elem);
-
 	if (!success) {
-		child->is_loaded = -1;
-		thread_exit();
+		palloc_free_page(f_name);
 		return -1;
 	}
 
-	child->is_loaded = 1;
-	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -212,13 +228,14 @@ struct thread *get_child_process(int pid) {
 		struct thread *tmp = list_entry(start, struct thread, child_elem);
 		if (pid == tmp->tid) return tmp;
 	}
+
 	return NULL;
 }
 
-void remove_child_process(struct thread *cp) {
-	list_remove(&cp->child_elem);
-	palloc_free_page(cp);
-}
+// void remove_child_process(struct thread *cp) {
+// 	list_remove(&cp->child_elem);
+// 	palloc_free_page(cp);
+// }
 
 void argument_stack(char **arg_list, int cnt, struct intr_frame *if_) {
 	char *arg_address[128];
@@ -280,8 +297,9 @@ process_wait (tid_t child_tid UNUSED) {
 
 	if (child == NULL) return -1;
 
-	sema_down(&child->sema_exit);
-	palloc_free_page(child);
+	sema_down(&child->wait_sema);
+	list_remove(&child->child_elem);
+	sema_up(&child->free_sema);
 	return child->exit_status;
 }
 
@@ -293,6 +311,10 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
+	/* 부모 프로세스가 자식 프로세스의 종료상태 확인하게 함 */
+	sema_up(&curr->wait_sema);
+	/* 부모 프로세스가 자식 프로세스 종료인자 받을때 까지 대기 */
+	sema_down(&curr->free_sema);
 	process_cleanup ();
 }
 

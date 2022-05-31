@@ -7,15 +7,28 @@
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
-#include "threads/init.h"
+
 #include "filesys/filesys.h"
+#include "filesys/file.h"
+#include <list.h>
+#include "threads/palloc.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
 #include "threads/synch.h"
-#include "threads/thread.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
+void check_address(void *);             /* 포인터가 가리키는 주소가 유저영역의 주소인지 확인 잘못된 접근일 결우 프로세스 종료 */
+void get_argument(void *, int *, int);  /* 유저 스택에 저장된 인자값들을 커널로 저장, 인자가 저장된 위치가 유저영역인지 확인 */
+/* 시스템 콜 */
+void halt(void);                        /* pintos를 종료시키는 시스템 콜 */
+void exit(int);                         /* 현재 프로세스를 종료시키는 시스템 콜 */
+bool create(const char *, unsigned);    /* 파일을 생성하는 시스템 콜 */
+bool remove(const char *);              /* 파일을 삭제하는 시스템 콜 */
+int exec(const char *);
+int wait(int);
+tid_t fork (const char *thread_name, struct intr_frame *f);
+
 
 /* System call.
  *
@@ -46,7 +59,7 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f UNUSED) {
-	check_address(f);
+	// check_address(f);
 	int sys_number = f->R.rax; 
 
 	switch(sys_number) {
@@ -56,13 +69,15 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_EXIT:
 			exit(f->R.rdi);
 			break;
-		// case SYS_FORK:
-		// 	fork();		
+		case SYS_FORK:
+			f->R.rax = fork(f->R.rdi, f);
+			break;		
 		case SYS_EXEC:
 			exec(f->R.rdi);
 			break;
 		case SYS_WAIT:
 			wait(f->R.rdi);
+			break;
 		case SYS_CREATE:
 			create(f->R.rdi, f->R.rsi);
 			break;		
@@ -76,7 +91,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		// case SYS_READ:
 		// 	read();
 		// case SYS_WRITE:
-		// 	write();		
+		// 	write(f->R.rdi, f->R.rsi, f->R.rdx);		
 		// case SYS_SEEK:
 		// 	seek();		
 		// case SYS_TELL:
@@ -89,7 +104,8 @@ syscall_handler (struct intr_frame *f UNUSED) {
 }
 /* 포인터가 가리키는 주소가 유저영역의 주소인지 확인 잘못된 접근일 경우 프로세스 종료 */
 void check_address(void *addr) {
-	if (!is_user_vaddr(addr) || addr == NULL) {
+	struct thread *curr = thread_current();
+	if (!is_user_vaddr(addr) || addr == NULL || pml4_get_page(curr->pml4, addr) == NULL) {
 		exit(-1);
 	}
 }      
@@ -101,7 +117,7 @@ void get_argument(void *rsp, int *arg, int cnt) {
 		check_address(&arg[i]);
 		arg[i] = rsp_[i];
 	}
-}  
+}
 /* pintos를 종료시키는 시스템 콜 */
 void halt(void) {
 	power_off();
@@ -110,39 +126,50 @@ void halt(void) {
 /* 현재 프로세스를 종료시키는 시스템 콜 */                       
 void exit(int status) {
 	struct thread *curr = thread_current();
-	curr->exit_status = 1;
+	curr->exit_status = status;
+
 	printf("%s: exit(%d)", curr->name, status);
 	thread_exit();
 }
 
 /* 파일을 생성하는 시스템 콜 */                        
 bool create(const char *file, unsigned initial_size) {
-	if (filesys_create(file, initial_size)) {
-		return true;
-	}
-	else {
-		return false;
-	}
+	check_address(file);
+	return filesys_create(file, initial_size);
 }
 
 /* 파일을 삭제하는 시스템 콜 */    
 bool remove(const char *file) {
-	if (filesys_remove(file)) {
-		return true;
-	} else {
-		return false;
-	}
+	check_address(file);
+	return filesys_remove(file);
 }
 
 /* 자식 프로세스를 생성하고 프로그램을 실행시키는 시스템 콜 */
-tid_t exec(const char *cmd_line) {
-	tid_t pid = process_create_initd(cmd_line);
-	struct thread *curr = thread_current ();
-	sema_down(&curr->sema_load);
-	struct thread *child = get_child_process(pid);
-	return child->is_loaded == -1 ? -1 : pid;
+int exec(const char *cmd_line) {
+	check_address(cmd_line);
+
+	int size = strlen(cmd_line) + 1;
+	char *fn_copy = palloc_get_page(PAL_ZERO);
+	
+	if (fn_copy == NULL) {
+		exit(-1);
+	}
+	strlcpy(fn_copy, cmd_line, size);
+
+	if (process_exec(fn_copy) == -1) {
+		return -1;
+	}
+
+	NOT_REACHED();
+
+	return 0;
 }
 
-int wait(tid_t tid) {
+int wait(int tid) {
 	process_wait(tid);
+}
+
+tid_t fork (const char *thread_name, struct intr_frame *f)
+{
+	return process_fork(thread_name, f);
 }

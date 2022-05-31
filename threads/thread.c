@@ -282,14 +282,12 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
-
+	
 	/* project 2 */
 	struct thread *curr = thread_current();
-	t->parents = curr;
-	t->is_loaded = 0;
-	t->is_exited = 0;
-	sema_init(&t->sema_exit, 0);
-	sema_init(&t->sema_load, 0);
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->free_sema, 0);
 	list_push_back(&curr->child_list, &t->child_elem);
 
 	/* Add to run queue. */
@@ -371,9 +369,6 @@ thread_exit (void) {
 	ASSERT (!intr_context ());
 
 #ifdef USERPROG
-	struct thread *curr = thread_current();
-	remove_child_process(curr);
-	sema_up(&curr->sema_exit)
 	process_exit ();
 #endif
 
