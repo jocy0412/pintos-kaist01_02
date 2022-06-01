@@ -35,6 +35,9 @@ typedef int tid_t;
 #define RECENT_CPU_DEFAULT 0
 #define LOAD_AVG_DEFAULT 0
 
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES * (1<<9)
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The

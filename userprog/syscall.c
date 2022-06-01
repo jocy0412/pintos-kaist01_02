@@ -27,8 +27,21 @@ bool create(const char *, unsigned);    /* 파일을 생성하는 시스템 콜 
 bool remove(const char *);              /* 파일을 삭제하는 시스템 콜 */
 int exec(const char *);
 int wait(int);
-tid_t fork (const char *thread_name, struct intr_frame *f);
+tid_t fork (const char *, struct intr_frame *);
 
+/* 파일 관련 시스템 콜 */
+const int STDIN = 0;
+const int STDOUT = 1;
+struct lock file_rw_lock;
+int open(const char *);
+int add_file_to_fdt(struct file *);
+static struct file *fd_to_struct_file(int);
+void remove_file_from_fdt(int);
+int filesize(int);
+int read(int, void *, unsigned);
+int write(int, const void *, unsigned);
+void seek (int, unsigned);
+unsigned tell (int);
 
 /* System call.
  *
@@ -54,6 +67,7 @@ syscall_init (void) {
 	 * mode stack. Therefore, we masked the FLAG_FL. */
 	write_msr(MSR_SYSCALL_MASK,
 			FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+	lock_init(&file_rw_lock);
 }
 
 /* The main system call interface */
@@ -84,23 +98,31 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_REMOVE:
 			remove(f->R.rdi);
 			break;		
-		// case SYS_OPEN:
-		// 	open();		
-		// case SYS_FILESIZE:
-		// 	filesize();
-		// case SYS_READ:
-		// 	read();
-		// case SYS_WRITE:
-		// 	write(f->R.rdi, f->R.rsi, f->R.rdx);		
-		// case SYS_SEEK:
-		// 	seek();		
-		// case SYS_TELL:
-		// 	tell();		
-		// case SYS_CLOSE:
-		// 	close();	
+		case SYS_OPEN:
+			open(f->R.rdi);
+			break;		
+		case SYS_FILESIZE:
+			filesize(f->R.rdi);
+			break;
+		case SYS_READ:
+			read(f->R.rdi, f->R.rsi, f->R.rdx);
+			break;
+		case SYS_WRITE:
+			write(f->R.rdi, f->R.rsi, f->R.rdx);		
+			break;
+		case SYS_SEEK:
+			seek(f->R.rdi, f->R.rsi);
+			break;		
+		case SYS_TELL:
+			tell(f->R.rdi);
+			break;		
+		case SYS_CLOSE:
+			close(f->R.rdi);
+			break;
+		default:
+			printf ("system call!\n");
+			thread_exit ();
 	}
-	printf ("system call!\n");
-	thread_exit ();
 }
 /* 포인터가 가리키는 주소가 유저영역의 주소인지 확인 잘못된 접근일 경우 프로세스 종료 */
 void check_address(void *addr) {
@@ -172,4 +194,145 @@ int wait(int tid) {
 tid_t fork (const char *thread_name, struct intr_frame *f)
 {
 	return process_fork(thread_name, f);
+}
+
+/*----------------------------file------------------------------*/
+
+/*----------------------------helper function start------------------------------*/
+int add_file_to_fdt(struct file *fileobj) {
+	struct thread *curr = thread_current();
+	curr->fdTable[++curr->fdIdx] = fileobj;
+	return curr->fdIdx;
+}
+
+static struct file *fd_to_struct_file(int fd) {
+	struct thread *curr = thread_current();
+	struct file *file = curr->fdTable[fd];
+	check_address(file);
+	if (file == NULL || fd < 0 || fd >= FDCOUNT_LIMIT) return NULL;
+	return file;
+}
+
+void remove_file_from_fdt(int fd) {
+	struct thread *curr = thread_current();
+	if (fd < 0 || fd >= FDCOUNT_LIMIT) return;
+	curr->fdTable[fd] = NULL;
+}
+/*----------------------------helper function end------------------------------*/
+
+int open(const char *file) {
+	check_address(file);
+	struct file *fileobj = filesys_open(file);
+	int fd = add_file_to_fdt(fileobj);
+	if (fileobj == NULL || fd < 0 || fd >= FDCOUNT_LIMIT) return -1;
+	return fd;
+}
+
+int filesize(int fd) {
+	struct file *fileobj = fd_to_struct_file(fd);
+	if (fileobj == NULL) return -1;
+	return file_length(fileobj);
+}
+
+int read(int fd, void *buffer, unsigned size) {
+	check_address(buffer);
+	int ret;
+	struct thread *curr = thread_current();
+	struct file *fileobj = fd_to_struct_file(fd);
+
+	if (fileobj == NULL) return -1;
+
+	if (fd == STDIN) {
+		// if (curr->stdin_count == 0) {
+		// 	// Not reachable
+		// 	NOT_REACHED();
+		// 	remove_file_from_fdt(fd);
+		// 	ret = -1;
+		// }
+		// else {
+			int i;
+			unsigned char *buf = buffer;
+			
+			/* 키보드로 적은(버퍼) 내용 받아옴 */
+			for (i = 0; i < size; i++) {
+				char c = input_getc();
+				*buf++ = c;
+				if (c == '\0')
+					break;
+			}
+			ret = i;
+		// }
+	}
+	else if (fd == STDOUT) {
+		ret = -1;
+	}
+	else {
+		lock_acquire(&file_rw_lock);
+		ret = file_read(fileobj, buffer, size);
+		lock_release(&file_rw_lock);
+	}
+	return ret;
+}
+
+int write(int fd, const void *buffer, unsigned size) {
+	check_address(buffer);
+	int ret;
+	struct thread *curr = thread_current();
+	struct file *fileobj = fd_to_struct_file(fd);
+
+	if (fileobj == NULL) return -1;
+	
+	if (fd == STDOUT) {
+		// if(curr->stdout_count == 0) {
+		// 	//Not reachable
+		// 	NOT_REACHED();
+		// 	remove_file_from_fdt(fd);
+		// 	ret = -1;
+		// }
+		// else
+		// {
+			/* 버퍼를 콘솔에 출력 */
+			putbuf(buffer, size);
+			ret = size;
+		// }
+	}
+	else if (fd == STDIN) {
+		ret = -1;
+	} 
+	else {
+		lock_acquire(&file_rw_lock);
+		ret = file_write(fileobj, buffer, size);
+		lock_release(&file_rw_lock);
+	}
+	return ret;
+}
+
+void seek(int fd, unsigned position) {
+	if (fd < 2) return;
+	struct file *fileobj = fd_to_struct_file(fd);
+	if (fileobj == NULL) return;
+	file_seek(fileobj, position);
+}
+
+unsigned tell(int fd) {
+	if (fd < 2) return;
+	struct file *fileobj = fd_to_struct_file(fd);
+	if (fileobj == NULL) return;
+	return file_tell(fileobj);
+}
+
+void close(int fd){
+	struct file *fileobj = fd_to_struct_file(fd);
+	if (fileobj == NULL) return;
+	
+	struct thread *cur = thread_current();
+	
+	if (fd == STDIN) {
+		cur->stdin_count--;
+	}
+	else if (fd == STDOUT) {
+		cur->stdout_count--;
+	}
+	
+	remove_file_from_fdt(fd);
 }

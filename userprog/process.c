@@ -47,14 +47,14 @@ process_create_initd (const char *file_name) {
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
 	fn_copy = palloc_get_page (0);
-	if (fn_copy == NULL)
-		return TID_ERROR;
+	if (fn_copy == NULL) return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
 
+	char *save_file;
+	strtok_r(file_name," ",&save_file);
 	/* Create a new thread to execute FILE_NAME. */
 	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
-	if (tid == TID_ERROR)
-		palloc_free_page (fn_copy);
+	if (tid == TID_ERROR) palloc_free_page (fn_copy);
 	return tid;
 }
 
@@ -211,7 +211,7 @@ process_exec (void *f_name) {
 		return -1;
 	}
 
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -311,11 +311,15 @@ process_exit (void) {
 	 * TODO: Implement process termination message (see
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
-	/* 부모 프로세스가 자식 프로세스의 종료상태 확인하게 함 */
-	sema_up(&curr->wait_sema);
-	/* 부모 프로세스가 자식 프로세스 종료인자 받을때 까지 대기 */
-	sema_down(&curr->free_sema);
+	for (int i = 0; i < FDCOUNT_LIMIT; i++) {
+		close(i);
+	}
+
+	palloc_free_multiple(curr->fdTable, FDT_PAGES); 
+	file_close(curr->running);
 	process_cleanup ();
+	sema_up(&curr->wait_sema);
+	sema_down(&curr->free_sema);
 }
 
 /* Free the current process's resources. */

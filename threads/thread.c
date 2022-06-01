@@ -290,6 +290,17 @@ thread_create (const char *name, int priority,
 	sema_init(&t->free_sema, 0);
 	list_push_back(&curr->child_list, &t->child_elem);
 
+	/* 파일 디스크립터 초기화 */
+    t->fdTable = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+    if(t->fdTable == NULL)
+        return TID_ERROR;
+    t->fdIdx = 1;
+    t->fdTable[0] = 0;
+    t->fdTable[1] = 1;
+
+    t->stdin_count = 1;
+    t->stdout_count = 1;
+
 	/* Add to run queue. */
 	thread_unblock (t);
 	test_max_priority();
