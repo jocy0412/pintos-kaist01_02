@@ -294,12 +294,9 @@ thread_create (const char *name, int priority,
     t->fdTable = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
     if(t->fdTable == NULL)
         return TID_ERROR;
-    t->fdIdx = 1;
+    t->fdIdx = 2;
     t->fdTable[0] = 0;
     t->fdTable[1] = 1;
-
-    t->stdin_count = 1;
-    t->stdout_count = 1;
 
 	/* Add to run queue. */
 	thread_unblock (t);
@@ -386,6 +383,7 @@ thread_exit (void) {
 	/* Just set our status to dying and schedule another process.
 	   We will be destroyed during the call to schedule_tail(). */
 	intr_disable ();
+	list_remove(&thread_current()->all_elem); 
 	do_schedule (THREAD_DYING);
 	NOT_REACHED ();
 }
@@ -540,9 +538,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 		t->wait_on_lock = NULL;
 		list_init(&t->donations);
 	}
+
 	if(idle_thread != t) {
 		list_push_back(&all_list, &t->all_elem);
 	}
+
+	t->running = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -702,7 +703,6 @@ schedule (void) {
 		if (curr && curr->status == THREAD_DYING && curr != initial_thread) {
 			ASSERT (curr != next);
 			list_push_back (&destruction_req, &curr->elem);
-			list_remove(&curr->all_elem);
 		}
 
 		/* Before switching the thread, we first save the information

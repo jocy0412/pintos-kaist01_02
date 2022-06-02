@@ -64,6 +64,9 @@ Makefile: $(SRCDIR)/Makefile.build
 -include $(DEPENDS)
 
 # Project 2 추가
+disk:
+	pintos-mkdisk filesys.dsk 10
+	pintos --fs-disk filesys.dsk -p tests/userprog/args-single:args-single -- -q -f run 'args-single onearg'
 parse:
 	pintos -v -k -T 60 -m 20   --fs-disk=10 -p tests/userprog/args-none:args-none -- -q   -f run args-none < /dev/null 2> tests/userprog/args-none.errors > tests/userprog/args-none.output
 	perl -I../.. ../../tests/userprog/args-none.ck tests/userprog/args-none tests/userprog/args-none.result
