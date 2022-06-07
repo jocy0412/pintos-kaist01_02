@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "*.html": "html",
+        "inode.h": "c",
+        "process.h": "c",
+        "palloc.h": "c",
+        "interrupt.h": "c",
+        "filesys.h": "c",
+        "file.h": "c",
+        "*.inc": "c"
+    }
+}

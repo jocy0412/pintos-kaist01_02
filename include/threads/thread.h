@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -27,6 +28,15 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+
+#define NICE_MIN -20
+#define NICE_MAX 20
+#define NICE_DEFAULT 0
+#define RECENT_CPU_DEFAULT 0
+#define LOAD_AVG_DEFAULT 0
+
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES * (1<<9)
 
 /* A kernel thread or user process.
  *
@@ -92,10 +102,14 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 	
+	int nice;
+	int recent_cpu;
+
 	int init_priority;
 	struct lock *wait_on_lock;
 	struct list donations;
 	struct list_elem donation_elem;
+	struct list_elem all_elem;
 	
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -108,10 +122,31 @@ struct thread {
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
 #endif
-
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+	
+	/* 자식 프로세스 순회용 리스트 */
+    struct list child_list;
+    struct list_elem child_elem; 
+
+    /* wait_sema 를 이용하여 자식 프로세스가 종료할때까지 대기함. 종료 상태를 저장 */
+    struct semaphore wait_sema;
+    int exit_status;
+
+    /* 자식에게 넘겨줄 intr_frame
+    fork가 완료될때 까지 부모가 기다리게 하는 forksema
+    자식 프로세스 종료상태를 부모가 받을때까지 종료를 대기하게 하는 free_sema */
+    struct intr_frame parent_if;
+    struct semaphore fork_sema;
+    struct semaphore free_sema;
+
+    /* fd table 파일 구조체와 fd index */
+    struct file **fdTable;
+    int fdIdx;
+
+    /* 현재 실행 중인 파일 */
+    struct file *running;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -162,5 +197,11 @@ void donate_priority(void);
 void remove_with_lock(struct lock *lock);
 void refresh_priority(void);
 bool donation_compare(const struct list_elem *, const struct list_elem *, void *);
+
+void mlfqs_priority (struct thread *t);
+void mlfqs_recent_cpu (struct thread *t);
+void mlfqs_load_avg (void);
+void mlfqs_increment (void);
+void mlfqs_recalc (void);
 
 #endif /* threads/thread.h */
